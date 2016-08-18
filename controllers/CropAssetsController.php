@@ -22,30 +22,27 @@ class CropAssetsController extends BaseController
     {
         $this->requireAjaxRequest();
         $elementId = craft()->request->getParam('elementId');
+        $cropAssetId = craft()->request->getParam('cropAssetId');
+
+        $folder = craft()->cropAssets->getAssetSource();
+        if ($folder === null) {
+            $this->returnErrorJson(Craft::t('No asset source has been configured for cropped assets.'));
+        }
 
         // Get the asset file
         $asset = craft()->assets->getFileById($elementId);
         $source = $asset->getSource();
         $sourceType = $source->getSourceType();
-        $file = $sourceType->getLocalCopy($asset);
+        $cropAsset = craft()->cropAssets->getCropAsset([
+            'sourceAssetId' => $elementId,
+            'id' => $cropAssetId,
+        ]);
 
         try {
-            // Test if we will be able to perform image actions on this image
-            if (!craft()->images->checkMemoryForImage($file)) {
-                IOHelper::deleteFile($file);
-                $this->returnErrorJson(Craft::t('The selected image is too large.'));
-            }
-
-            // Scale to fit 500x500 for fitting in CP modal
-            craft()->images->
-                loadImage($file)->
-                scaleToFit(500, 500, false)->
-                saveAs($file);
-
-            list($width, $height) = ImageHelper::getImageSize($file);
-
             // If the file is in the format badscript.php.gif perhaps.
-            if ($width && $height) {
+            if ($asset->getWidth()) {
+                list($width, $height) = craft()->cropAssets->getCropModalSize($asset);
+
                 $html = craft()->templates->render('_components/tools/cropper_modal',
                     array(
                         'imageUrl' => $asset->url,
@@ -55,7 +52,12 @@ class CropAssetsController extends BaseController
                     )
                 );
 
-                $this->returnJson(array('html' => $html));
+                $this->returnJson(array(
+                    'html' => $html,
+                    'filename' => $asset->filename,
+                    'mimetype' => $asset->mimetype,
+                    'settings'=> $cropAsset->settings,
+                ));
             }
         } catch (Exception $exception) {
             $this->returnErrorJson($exception->getMessage());
@@ -63,35 +65,39 @@ class CropAssetsController extends BaseController
     }
 
     /**
-     * Crop asset.
+     * Save cropped asset
      */
     public function actionApplyCrop()
     {
         $this->requireAjaxRequest();
-
-        try {
-            $x1 = craft()->request->getRequiredPost('x1');
-            $x2 = craft()->request->getRequiredPost('x2');
-            $y1 = craft()->request->getRequiredPost('y1');
-            $y2 = craft()->request->getRequiredPost('y2');
-            $source = craft()->request->getRequiredPost('source');
-
-            // Get element id and field handle
-            list($handle, $elementId) = explode(':', $source);
-
-            // Get asset
-            $asset = craft()->assets->getFileById($elementId);
-
-            // Save values on asset
-            $asset->getContent()->$handle = array($x1, $x2, $y1, $y2);
-            craft()->content->saveContent($asset, false);
-
-            // Return with success message
-            $this->returnJson(array('message' => Craft::t('Successfully saved crop.')));
-        } catch (Exception $exception) {
-            $this->returnErrorJson($exception->getMessage());
+        $elementId = craft()->request->getRequiredPost('elementId');
+        $cropAssetId = craft()->request->getRequiredPost('cropAssetId');
+        $fieldId = craft()->request->getRequiredPost('fieldId');
+        $settings = craft()->request->getRequiredPost('settings');
+        $folder = craft()->cropAssets->getAssetSource();
+        if ($folder === null) {
+            $this->returnErrorJson(Craft::t('No asset source has been configured for cropped assets.'));
         }
 
-        $this->returnErrorJson(Craft::t('Something went wrong when processing the crop.'));
+        $assetOperationResult = craft()->cropAssets->uploadCroppedAsset($folder);
+        if ($assetOperationResult->isSuccess()) {
+            $cropAsset = craft()->cropAssets->getCropAsset(['id' => $cropAssetId]);
+            $oldTargetId = $cropAsset->targetAssetId;
+            $cropAsset->sourceAssetId = $elementId;
+            $cropAsset->targetAssetId = $assetOperationResult->getDataItem('fileId');
+            $cropAsset->fieldId = $fieldId;
+            $cropAsset->settings = $settings;
+
+            craft()->cropAssets->saveCropAsset($cropAsset);
+            if ($oldTargetId) {
+                craft()->assets->deleteFiles([$oldTargetId]);
+            }
+
+            $this->returnJson([
+                'message' => Craft::t('Successfully saved crop.'),
+                'cropAssetId' => $cropAsset->id,
+            ]);
+        }
+        $this->returnErrorJson(Craft::t($assetOperationResult->errorMessage));
     }
 }

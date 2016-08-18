@@ -20,7 +20,7 @@ class CropAssetsFieldType extends AssetsFieldType
      *
      * @var string
      */
-    protected $inputTemplate = 'cropAssets/_input';
+    protected $inputTemplate = 'cropAssets/field/_input';
 
     /**
      * Get fieldtype name.
@@ -30,16 +30,6 @@ class CropAssetsFieldType extends AssetsFieldType
     public function getName()
     {
         return Craft::t('Crop Assets');
-    }
-
-    /**
-     * We're going to save an array crop values.
-     *
-     * @return mixed
-     */
-    public function defineContentAttribute()
-    {
-        return AttributeType::Mixed;
     }
 
     /**
@@ -53,7 +43,7 @@ class CropAssetsFieldType extends AssetsFieldType
     {
         // Behave as normal asset in back-end
         if (craft()->request->isCpRequest()) {
-            return $this->prepValueForCp($value);
+            return parent::prepValue($value);
         }
 
         return $this->prepValueForSite($value);
@@ -82,7 +72,7 @@ class CropAssetsFieldType extends AssetsFieldType
         $namespace = craft()->templates->getNamespace();
         $isMatrix = (strncmp($namespace, 'types[Matrix][blockTypes][', 26) === 0);
 
-        return craft()->templates->render('cropAssets/_settings', array(
+        return craft()->templates->render('cropAssets/field/_settings', array(
             'folderOptions' => $folderOptions,
             'sourceOptions' => $sourceOptions,
             'targetLocaleField' => $this->getTargetLocaleFieldHtml(),
@@ -90,6 +80,28 @@ class CropAssetsFieldType extends AssetsFieldType
             'type' => $this->getName(),
             'isMatrix' => $isMatrix,
         ));
+    }
+
+    /**
+     * Update entryId of the cropAsset after saving the element
+     *
+     * {@inheritdoc}
+     */
+    public function onAfterElementSave()
+    {
+        parent::onAfterElementSave();
+
+        $fieldId = $this->model->id;
+        $postLocation = preg_replace('/\.([^.]+)$/', '', $this->contentPostLocation);
+        $postedFields = craft()->request->getPost($postLocation);
+
+        if (isset($postedFields['cropassets'][$fieldId])) {
+            $cropAssetId = $postedFields['cropassets'][$fieldId];
+            $cropAsset = craft()->cropAssets->getCropAsset(['id' => $cropAssetId]);
+            $cropAsset->entryId = $this->element->id;
+
+            craft()->cropAssets->saveCropAsset($cropAsset);
+        }
     }
 
     // Protected
@@ -115,8 +127,11 @@ class CropAssetsFieldType extends AssetsFieldType
      */
     protected function getInputTemplateVariables($name, $criteria)
     {
+        $cropAsset = $this->getCropAsset();
+
         $variables = parent::getInputTemplateVariables($name, $criteria);
         $variables['aspectRatio'] = $this->getSettings()->aspectRatio;
+        $variables['cropAsset'] = $cropAsset;
 
         return $variables;
     }
@@ -142,76 +157,31 @@ class CropAssetsFieldType extends AssetsFieldType
     // =========================================================================
 
     /**
-     * Prep value for CP.
-     *
-     * @param mixed $value
-     *
-     * @return mixed
-     */
-    private function prepValueForCp($value)
-    {
-        // Overwrite value, if any
-        if ($value) {
-
-            // Unset value
-            $value = null;
-
-            // Fetch target id(s)
-            $results = craft()->db->createCommand()
-                                ->select('targetId')
-                                ->from('relations')
-                                ->where(array(
-                                    'fieldId' => $this->model->id,
-                                    'sourceId' => $this->element->id,
-                                ))
-                                ->queryAll();
-
-            // If db result is valid
-            if ($results && is_array($results)) {
-
-                // Gather value
-                $value = array();
-
-                // Loop through target ids
-                foreach ($results as $result) {
-                    $value[] = $result['targetId'];
-                }
-            }
-        }
-
-        // Return with new values
-        return parent::prepValue($value);
-    }
-
-    /**
      * Prep value for site.
      *
      * @param mixed $value
      *
-     * @return CropAssetsModel|null
+     * @return array
      */
     private function prepValueForSite($value)
     {
-        if (is_array($value) && array_key_exists(0, $value)) {
-
-            // Get image
-            $image = craft()->assets->getFileById($value[0]);
-
-            // Validate image
-            if ($image) {
-
-                // Set up attributes
-                $attributes = array_merge(
-                    $image->getAttributes(),
-                    array(
-                        'handle' => $this->model->handle,
-                        'settings' => $this->getSettings(),
-                    )
-                );
-
-                // Return video models
-                return CropAssetsModel::populateModel($attributes);
-            }
+        $cropAsset = $this->getCropAsset();
+        if ($cropAsset->targetAssetId) {
+            $value = [$cropAsset->targetAssetId];
         }
+        return parent::prepValue($value);
+    }
+
+    /**
+     * Get crop asset for model and element
+     *
+     * @return CropAssetModel
+     */
+    private function getCropAsset()
+    {
+        return craft()->cropAssets->getCropAsset([
+            'entryId' => @$this->element->id,
+            'fieldId' => $this->model->id,
+        ]);
     }
 }

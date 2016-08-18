@@ -1,0 +1,22 @@
+{
+  "name": "cropassets",
+  "version": "2.0.0",
+  "description": "Crop Assets Plugin for Craft CMS",
+  "main": "resources/js/cropper.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/boboldehampsink/cropassets.git"
+  },
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/boboldehampsink/cropassets/issues"
+  },
+  "homepage": "https://github.com/boboldehampsink/cropassets#readme",
+  "dependencies": {
+    "cropperjs": "^0.7.2"
+  }
+}

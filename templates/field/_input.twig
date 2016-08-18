@@ -1,5 +1,6 @@
 {% if name is defined and name %}
 	<input type="hidden" name="{{ name }}" value="">
+	<input type="hidden" id="cropAssets-{{ fieldId }}" name="cropassets[{{ fieldId }}]" value="{{ cropAsset.id }}">
 {% endif -%}
 
 {% set elements = (elements is defined ? elements : []) -%}
@@ -8,7 +9,11 @@
 {% set criteria = (criteria is defined and criteria ? criteria : null) -%}
 {% set storageKey = (storageKey is defined and storageKey ? storageKey : null) -%}
 
-<div id="{{ id }}" class="elementselect">
+<div id="{{ id }}"
+	data-cropassets-field-id="{{ ('cropAssets-' ~ fieldId)|namespaceInputId }}"
+	data-field-id="{{ fieldId }}"
+	data-aspectratio="{{ aspectRatio }}"
+	class="elementselect cropassets">
 	<div class="elements">
 		{% for element in elements %}
 			{% include "_elements/element" with {
@@ -21,8 +26,8 @@
 	<div class="btn add icon dashed">{{ selectionLabel }}</div>
 </div>
 
-{% includejsresource "lib/jcrop/jquery.Jcrop.min.js" %}
-{% includecssresource "lib/jcrop/jquery.Jcrop.min.css" %}
+{% includejsresource "cropassets/lib/cropperjs/dist/cropper.js" %}
+{% includecssresource "cropassets/lib/cropperjs/dist/cropper.css" %}
 {% includejsresource "cropassets/js/cropper.js" %}
 
 {% includejs %}
@@ -38,7 +43,9 @@
         modalStorageKey: "{{ storageKey }}",
         fieldId: "{{ fieldId }}",
         onSelectElements: function(elements) {
-            initCropper('{{ name }}', elements[0].id, '{{ aspectRatio }}');
+            CropAssets.initCropper(elements[0].id, '{{ aspectRatio }}', '{{ fieldId }}', '{{ ("cropAssets-" ~ fieldId)|namespaceInputId }}');
+			CropAssets.applyContextMenu();
         }
     });
+	Craft.translations['Crop asset'] = "{{ 'Crop asset'|t }}";
 {% endincludejs %}
